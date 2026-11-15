@@ -62,6 +62,7 @@ def path_page(p): return '/school' if p.startswith('/school') else '/super' if p
 pins_ok = lambda h: 'GL' in h
 db = lambda q, a=(): sqlite3.connect(DBF).execute(q, a).fetchall()
 try:
+    s, h, _ = Client().req('/healthz'); ok('/healthz answers 200 "ok" (used by the host health check)', s == 200 and h.strip() == 'ok', f'{s} {h[:50]}')
     # ---------- 1. Super admin registers a school
     sup = Client(); s, h, _ = sup.login('super@test.local', 'SuperPass#12345'); ok('super admin signs in', 'Super' in h or s == 200, h)
     for p in ['/super', '/super/schools', '/super/schools/new', '/super/logs', '/super/cards', '/super/admins', '/super/notifications', '/super/settings', '/account/password', '/notifications']:

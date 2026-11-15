@@ -56,13 +56,12 @@ Check `git status` shows no `.env` (it is in `.gitignore`). Never commit real se
 | `APP_URL` | your public https URL (no trailing slash) |
 | `APP_SECRET` | random 32+ characters. **Back it up**: changing it invalidates every issued card |
 | `APP_TIMEZONE` | `Africa/Addis_Ababa` (or your zone) |
-| `DB_DRIVER` | `mysql` |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | from the MySQL add-on |
+| `DATABASE_URL` | set automatically by the MySQL add-on (`mysql://user:pass@host:port/name`); GRADELY reads it. Only set `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASS` yourself if there is no `DATABASE_URL` (explicit `DB_*` values win) |
 | `SETUP_TOKEN` | a random string, used once |
 | `TRUST_PROXY` | `1` (the platform terminates HTTPS in front of the container) |
 | `FORCE_HTTPS` | `1` once the https URL works |
 
-4. Deploy. On first start the container creates the tables automatically (`tools/install_schema.php`; only runs when the database is empty; disable with `AUTO_INSTALL_SCHEMA=0`). The container listens on `$PORT` (default 80). If EthioDeploy asks for a port, use the one it injects or 80.
+4. Deploy. On first start the container creates the tables automatically (`tools/install_schema.php`; only runs when the database is empty; disable with `AUTO_INSTALL_SCHEMA=0`). The container listens on `$PORT` (EthioDeploy sets 3000; default 3000). Set the **Health Check Path** to `/healthz` (answers `ok` without touching the database).
 5. Open `https://your-url/setup`, enter `SETUP_TOKEN`, create the Super Admin, then **delete `SETUP_TOKEN`** from the variables and redeploy.
 
 ## 3. Things to know

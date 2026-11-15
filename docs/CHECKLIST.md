@@ -22,7 +22,7 @@ Bugs found by these tests and fixed during the build include: analytics page rea
 - **Load.** No load/performance testing beyond the 12-way race.
 - **Bulk import of large files** (limits: 2 MB / 2000 rows) and **huge classes** for bulk report cards.
 
-- **Docker / EthioDeploy route.** `Dockerfile`, `docker/entrypoint.sh` and `tools/install_schema.php` were written but never built or run (no Docker daemon or MySQL available). Only the schema-statement splitting was checked (27 statements = 26 tables + `SET NAMES`).
+- **Docker / EthioDeploy route.** First deploy attempt: the image BUILT fine on EthioDeploy, but failed its health check because the app ignored the platform's `DATABASE_URL`; fixed (`DATABASE_URL` support, `/healthz`, port 3000) and unit-tested, but the redeploy has not been confirmed yet. `Dockerfile`, `docker/entrypoint.sh` and `tools/install_schema.php` were written but never built or run (no Docker daemon or MySQL available). Only the schema-statement splitting was checked (27 statements = 26 tables + `SET NAMES`).
 
 ## Known limitations / design choices
 - **PDF = browser Print → Save as PDF** with an A4 stylesheet. There is no server-side PDF engine.
