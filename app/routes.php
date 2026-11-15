@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Controllers\{
-    AcademicsController, AccountController, AuthController, CardsController, ClassesController, MediaController,
+    AcademicsController, AccountController, HealthController, AuthController, CardsController, ClassesController, MediaController,
     NotificationsController, PortalController, ReportsController, ResultsController, SchoolController,
     SchoolProfileController, ScoresController, SettingsController, SetupController, StudentsController,
     SubjectsController, SuperController, SuperSchoolsController, SuperToolsController, TeachersController
@@ -18,6 +18,7 @@ $admin = [M::auth(), M::school(), M::role('school_admin')];
 $perm = static fn(string $p): array => [M::auth(), M::school(), M::can($p)];
 
 // ---------------------------------------------------------------- public
+$r->get('/healthz', [HealthController::class, 'live']);
 $r->get('/', [PortalController::class, 'home']);
 $r->get('/s/{slug}', [PortalController::class, 'forSchool']);
 $r->post('/portal/check', [PortalController::class, 'check']);

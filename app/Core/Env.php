@@ -31,10 +31,39 @@ final class Env
     public static function get(string $key, ?string $default = null): ?string
     {
         $real = getenv($key);
-        if ($real !== false) {
+        if ($real !== false && $real !== '') {
             return $real;
         }
-        return self::$vars[$key] ?? $default;
+        if (isset(self::$vars[$key]) && self::$vars[$key] !== '') {
+            return self::$vars[$key];
+        }
+        // Hosting platforms usually inject ONE connection string instead of separate DB_* settings.
+        if (str_starts_with($key, 'DB_') && $key !== 'DB_SQLITE_PATH' && ($v = self::fromDatabaseUrl($key)) !== null) {
+            return $v;
+        }
+        return $default ?? ($real !== false ? $real : null);
+    }
+
+    /** Reads DATABASE_URL / MYSQL_URL (mysql://user:pass@host:3306/name) for the matching DB_* key. */
+    public static function fromDatabaseUrl(string $key, ?string $url = null): ?string
+    {
+        $url ??= (string) (getenv('DATABASE_URL') ?: getenv('MYSQL_URL') ?: (self::$vars['DATABASE_URL'] ?? self::$vars['MYSQL_URL'] ?? ''));
+        if ($url === '') {
+            return null;
+        }
+        $p = parse_url($url);
+        if ($p === false || !isset($p['scheme']) || !in_array(strtolower($p['scheme']), ['mysql', 'mysqli', 'mariadb'], true)) {
+            return null;
+        }
+        return match ($key) {
+            'DB_DRIVER' => 'mysql',
+            'DB_HOST' => $p['host'] ?? null,
+            'DB_PORT' => isset($p['port']) ? (string) $p['port'] : null,
+            'DB_NAME' => isset($p['path']) && ltrim($p['path'], '/') !== '' ? rawurldecode(ltrim($p['path'], '/')) : null,
+            'DB_USER' => isset($p['user']) ? rawurldecode($p['user']) : null,
+            'DB_PASS' => isset($p['pass']) ? rawurldecode($p['pass']) : null,
+            default => null,
+        };
     }
 
     public static function bool(string $key, bool $default = false): bool
