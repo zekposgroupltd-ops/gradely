@@ -1,0 +1,34 @@
+# Front controller + hardening (Apache / LiteSpeed)
+Options -Indexes
+DirectoryIndex index.php
+
+# ---- HTTPS (recommended once the SSL certificate is active in cPanel) ----
+# Uncomment to force HTTPS at the web-server level. (The app can also do it: FORCE_HTTPS=1 in .env.)
+# RewriteEngine On
+# RewriteCond %{HTTPS} !=on
+# RewriteCond %{HTTP:X-Forwarded-Proto} !https
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+# ---- PWA ----
+AddType application/manifest+json .webmanifest
+<IfModule mod_headers.c>
+  # The service worker and manifest must never be served stale, or installed apps can't update.
+  <FilesMatch "^(sw\.js|manifest\.webmanifest|offline\.html)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "^sw\.js$">
+    Header set Service-Worker-Allowed "/"
+  </FilesMatch>
+</IfModule>
+
+# Never serve dotfiles or source/config-like files
+<FilesMatch "^\.|\.(env|sql|log|sqlite|lock)$">
+  Require all denied
+</FilesMatch>
