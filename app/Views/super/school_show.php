@@ -25,6 +25,15 @@
         <?= field_html('Plan', 'plan', $s['plan'], 'text', ['maxlength' => '40']) ?>
         <?= field_html('Licence expires on', 'license_expires_on', (string) $s['license_expires_on'], 'date', [], '(informational)') ?>
       </div>
+      <label class="field"><span class="field-label">Active teacher account limit</span>
+        <select name="teacher_limit">
+          <option value="" <?= empty($s['teacher_limit']) ? 'selected' : '' ?>>Unlimited (default)</option>
+          <?php foreach ([5, 10, 20] as $limit): ?>
+            <option value="<?= $limit ?>" <?= (int) ($s['teacher_limit'] ?? 0) === $limit ? 'selected' : '' ?>><?= $limit ?> active teachers</option>
+          <?php endforeach; ?>
+        </select>
+        <small class="hint">This controls the maximum number of active teacher accounts for this school.</small>
+      </label>
       <button class="btn btn-primary" type="submit">Save</button>
     </form>
   </section>

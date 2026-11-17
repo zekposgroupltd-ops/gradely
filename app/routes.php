@@ -5,7 +5,7 @@ use App\Controllers\{
     AcademicsController, AccountController, HealthController, AuthController, CardsController, ClassesController, MediaController,
     NotificationsController, PortalController, ReportsController, ResultsController, SchoolController,
     SchoolProfileController, ScoresController, SettingsController, SetupController, StudentsController,
-    SubjectsController, SuperController, SuperSchoolsController, SuperToolsController, TeachersController
+    SubjectsController, SuperController, SuperSchoolsController, SuperToolsController, TeachersController, VerificationController
 };
 use App\Core\{Middleware as M, Router};
 
@@ -19,6 +19,8 @@ $perm = static fn(string $p): array => [M::auth(), M::school(), M::can($p)];
 
 // ---------------------------------------------------------------- public
 $r->get('/healthz', [HealthController::class, 'live']);
+$r->get('/verify', [VerificationController::class, 'manual']);
+$r->get('/verify/{token}', [VerificationController::class, 'show']);
 $r->get('/', [PortalController::class, 'home']);
 $r->get('/s/{slug}', [PortalController::class, 'forSchool']);
 $r->post('/portal/check', [PortalController::class, 'check']);
@@ -49,6 +51,9 @@ $r->post('/super/schools/{id}/status', [SuperSchoolsController::class, 'status']
 $r->post('/super/schools/{id}/users/{user_id}/reset', [SuperSchoolsController::class, 'resetPassword'], $super);
 $r->get('/super/logs', [SuperToolsController::class, 'logs'], $super);
 $r->get('/super/cards', [SuperToolsController::class, 'cards'], $super);
+$r->get('/super/pin-requests', [SuperToolsController::class, 'pinRequests'], $super);
+$r->post('/super/pin-requests/{id}/approve', [SuperToolsController::class, 'approvePinRequest'], $super);
+$r->post('/super/pin-requests/{id}/reject', [SuperToolsController::class, 'rejectPinRequest'], $super);
 $r->get('/super/admins', [SuperToolsController::class, 'admins'], $super);
 $r->post('/super/admins', [SuperToolsController::class, 'storeAdmin'], $super);
 $r->post('/super/admins/{id}/toggle', [SuperToolsController::class, 'toggleAdmin'], $super);
@@ -131,6 +136,7 @@ $r->post('/school/results/unpublish', [ResultsController::class, 'unpublish'], $
 
 $cards = $perm('cards.manage');
 $r->get('/school/cards', [CardsController::class, 'index'], $cards);
+$r->post('/school/cards/request', [CardsController::class, 'requestPins'], $cards);
 $r->post('/school/cards/generate', [CardsController::class, 'generate'], $cards);
 $r->get('/school/cards/export.csv', [CardsController::class, 'exportInventory'], $cards);
 $r->get('/school/cards/batches/{id}', [CardsController::class, 'showBatch'], $cards);

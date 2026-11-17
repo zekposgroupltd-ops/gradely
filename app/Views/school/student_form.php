@@ -7,7 +7,7 @@ $classId = $v('class_id');
   <form class="form compact" method="post" action="<?= e(url($action)) ?>">
     <?= csrf_field() ?>
     <div class="form-row">
-      <?= field_html('Student ID', 'admission_no', $v('admission_no'), 'text', ['required' => true, 'maxlength' => '40'], '(unique in your school)') ?>
+      <?= field_html('Student ID', 'admission_no', $v('admission_no'), 'text', ['maxlength' => '40', 'placeholder' => $student ? 'Existing student ID' : 'Leave blank to generate automatically'], $student ? '(you can edit this ID)' : '(optional — auto-generated from your school prefix)') ?>
       <?= select_html('Gender', 'gender', ['M' => 'Male', 'F' => 'Female'], $v('gender'), [], 'Not specified') ?>
     </div>
     <div class="form-row">

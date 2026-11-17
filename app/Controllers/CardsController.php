@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\{Auth, AuditLog, DB, Http, View};
-use App\Services\{Notify, ScratchCardService};
+use App\Services\{Notify, Platform, ScratchCardService};
 
 /** School administrator: scratch-card batches, inventory, revocation and exports. */
 final class CardsController extends BaseController
@@ -26,48 +26,86 @@ final class CardsController extends BaseController
         $sid = $this->sid();
         $now = date('Y-m-d H:i:s');
         $batches = DB::all(
-            "SELECT b.*, t.name AS term_name, s.name AS session_name,
+            "SELECT b.*, t.name AS term_name, s.name AS session_name, cl.name AS class_name,
                     (SELECT COUNT(*) FROM scratch_cards c WHERE c.batch_id = b.id AND c.use_count = 0 AND c.status = 'active') AS unused,
                     (SELECT COUNT(*) FROM scratch_cards c WHERE c.batch_id = b.id AND c.use_count > 0) AS touched,
                     (SELECT COUNT(*) FROM scratch_cards c WHERE c.batch_id = b.id AND c.status = 'revoked') AS revoked
              FROM scratch_card_batches b
              JOIN terms t ON t.id = b.term_id AND t.school_id = b.school_id
-             JOIN academic_sessions s ON s.id = b.session_id AND s.school_id = b.school_id
+             JOIN academic_sessions s ON s.id = b.session_id AND s.school_id = b.school_id LEFT JOIN classes cl ON cl.id = b.class_id AND cl.school_id = b.school_id
              WHERE b.school_id = ? ORDER BY b.id DESC LIMIT 100",
             [$sid]
         );
-        View::render('school/cards', ['title' => 'Scratch cards', 'terms' => $this->terms(), 'batches' => $batches, 'stats' => ScratchCardService::stats($sid), 'now' => $now]);
+        $requests = DB::all('SELECT pr.*, t.name AS term_name, se.name AS session_name, c.name AS class_name FROM pin_requests pr JOIN terms t ON t.id = pr.term_id AND t.school_id = pr.school_id JOIN academic_sessions se ON se.id = t.session_id AND se.school_id = t.school_id LEFT JOIN classes c ON c.id = pr.class_id AND c.school_id = pr.school_id WHERE pr.school_id = ? ORDER BY pr.id DESC LIMIT 30', [$sid]);
+        $approved = array_values(array_filter($requests, static fn($r) => $r['status'] === 'approved'));
+        $classes = DB::all("SELECT c.id, c.name, (SELECT COUNT(*) FROM students st WHERE st.school_id = c.school_id AND st.class_id = c.id AND st.status = 'active') AS student_count FROM classes c WHERE c.school_id = ? ORDER BY c.level_order, c.name", [$sid]);
+        $schoolStudentCount = (int) DB::val("SELECT COUNT(*) FROM students WHERE school_id = ? AND status = 'active'", [$sid]);
+        View::render('school/cards', ['title' => 'Scratch cards', 'terms' => $this->terms(), 'batches' => $batches, 'stats' => ScratchCardService::stats($sid), 'now' => $now, 'requests' => $requests, 'approvedRequests' => $approved, 'classes' => $classes, 'schoolStudentCount' => $schoolStudentCount, 'pinPrice' => (float) Platform::get('pin_price_per_student')]);
+    }
+
+    public function requestPins(): void
+    {
+        $term = $this->owned('terms', (int) Http::input('term_id'));
+        $classId = (int) Http::input('class_id') ?: null; // null means the whole school
+        if ($classId !== null && DB::val('SELECT COUNT(*) FROM classes WHERE id = ? AND school_id = ?', [$classId, $this->sid()]) == 0) {
+            $this->fail('Choose a valid class.', self::BACK);
+        }
+        $quantity = $classId !== null
+            ? (int) DB::val('SELECT COUNT(DISTINCT student_id) FROM result_summaries WHERE school_id = ? AND term_id = ? AND class_id = ?', [$this->sid(), $term['id'], $classId])
+            : (int) DB::val('SELECT COUNT(DISTINCT student_id) FROM result_summaries WHERE school_id = ? AND term_id = ?', [$this->sid(), $term['id']]);
+        if ($quantity === 0) {
+            $quantity = (int) DB::val(
+                "SELECT COUNT(*) FROM students WHERE school_id = ? AND status = 'active'" . ($classId !== null ? ' AND class_id = ?' : ''),
+                $classId !== null ? [$this->sid(), $classId] : [$this->sid()]
+            );
+        }
+        $pendingSql = "SELECT COUNT(*) FROM pin_requests WHERE school_id = ? AND term_id = ? AND status IN ('pending','approved')" . ($classId === null ? ' AND class_id IS NULL' : ' AND class_id = ?');
+        $pendingParams = $classId === null ? [$this->sid(), $term['id']] : [$this->sid(), $term['id'], $classId];
+        if ((int) DB::val($pendingSql, $pendingParams) > 0) { $this->fail('There is already a pending or approved PIN request for this term and coverage. Complete or resolve it before submitting another.', self::BACK); }
+        if ($quantity < 1) { $this->fail('There are no active students in the selected scope.', self::BACK); }
+        $price = (float) Platform::get('pin_price_per_student');
+        if ($price <= 0) { $this->fail('Result-checking PIN pricing has not been configured by the platform administrator yet.', self::BACK); }
+        $total = round($price * $quantity, 2);
+        $id = DB::insert(
+            "INSERT INTO pin_requests (school_id, term_id, class_id, quantity, unit_price, total_amount, status, requested_by) VALUES (?,?,?,?,?,?,'pending',?)",
+            [$this->sid(), $term['id'], $classId, $quantity, $price, $total, (int) Auth::user()['id']]
+        );
+        AuditLog::record('pins.requested', 'pin_request', $id, ['quantity' => $quantity, 'amount' => $total, 'class_id' => $classId]);
+        $this->ok("PIN request #$id submitted for $quantity student(s). The platform administrator must approve it after payment verification.", self::BACK);
     }
 
     public function generate(): void
     {
-        $term = $this->owned('terms', (int) Http::input('term_id'));
-        $qty = (int) Http::input('quantity');
-        $label = $this->text('label', 100);
+        $requestId = (int) Http::input('request_id');
+        $request = DB::one("SELECT * FROM pin_requests WHERE id = ? AND school_id = ? AND status = 'approved'", [$requestId, $this->sid()]);
+        if ($request === null) { $this->fail('Choose an approved PIN request. Requests must be approved before cards can be generated.', self::BACK); }
         $exp = Http::input('expires_on');
-        if ($label === null) {
-            $this->fail('The batch label is too long.', self::BACK);
-        }
         if ($exp !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $exp) || $exp < date('Y-m-d'))) {
             $this->fail('The expiry date must be today or later.', self::BACK);
         }
         try {
-            $res = ScratchCardService::generateBatch($this->sid(), (int) $term['id'], $qty, $label ?: null, (int) Auth::user()['id'], $exp !== '' ? $exp . ' 23:59:59' : null);
+            $res = DB::transaction(static function () use ($request, $requestId, $exp): array {
+                $lock = 'SELECT * FROM pin_requests WHERE id = ? AND school_id = ?'; if (DB::isMysql()) { $lock .= ' FOR UPDATE'; }
+                $fresh = DB::one($lock, [$requestId, $request['school_id']]);
+                if ($fresh === null || $fresh['status'] !== 'approved') { throw new \RuntimeException('This PIN request is no longer available for fulfilment.'); }
+                $result = ScratchCardService::generateBatch((int) $fresh['school_id'], (int) $fresh['term_id'], (int) $fresh['quantity'], 'Approved PIN request #' . $requestId, (int) Auth::user()['id'], $exp !== '' ? $exp . ' 23:59:59' : null, $fresh['class_id'] !== null ? (int) $fresh['class_id'] : null, $requestId);
+                DB::run("UPDATE pin_requests SET status = 'fulfilled', fulfilled_at = NOW() WHERE id = ? AND status = 'approved'", [$requestId]);
+                return $result;
+            });
         } catch (\RuntimeException $e) {
             $this->fail($e->getMessage(), self::BACK);
         }
-        // The plaintext PINs live only in this session, so they can be printed/exported once.
         $_SESSION['new_pins'] = [$res['batch_id'] => $res['cards']];
-        AuditLog::record('cards.generated', 'batch', $res['batch_id'], ['term' => $term['name'], 'quantity' => $qty]);
-        Notify::schoolAdmins($this->sid(), 'Scratch cards generated', "$qty card(s) were generated for {$term['name']} by " . Auth::user()['name'] . '.');
-        $this->ok("$qty scratch cards generated. Save the PINs now: they cannot be shown again.", '/school/cards/batches/' . $res['batch_id']);
+        AuditLog::record('cards.generated', 'batch', $res['batch_id'], ['request_id' => $requestId, 'quantity' => (int) $request['quantity']]);
+        Notify::schoolAdmins($this->sid(), 'Scratch cards generated', (int) $request['quantity'] . ' result-checking PIN(s) have been generated. Save the PINs now.');
+        $this->ok((int) $request['quantity'] . ' approved scratch cards generated. Save the PINs now: they cannot be shown again.', '/school/cards/batches/' . $res['batch_id']);
     }
 
     private function batch(int $id): array
     {
         $b = DB::one(
-            'SELECT b.*, t.name AS term_name, s.name AS session_name FROM scratch_card_batches b
-             JOIN terms t ON t.id = b.term_id AND t.school_id = b.school_id JOIN academic_sessions s ON s.id = b.session_id AND s.school_id = b.school_id
+            'SELECT b.*, t.name AS term_name, s.name AS session_name, cl.name AS class_name FROM scratch_card_batches b
+             JOIN terms t ON t.id = b.term_id AND t.school_id = b.school_id JOIN academic_sessions s ON s.id = b.session_id AND s.school_id = b.school_id LEFT JOIN classes cl ON cl.id = b.class_id AND cl.school_id = b.school_id
              WHERE b.id = ? AND b.school_id = ?',
             [$id, $this->sid()]
         );

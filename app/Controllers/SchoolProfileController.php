@@ -24,6 +24,10 @@ final class SchoolProfileController extends BaseController
         $phone = $this->text('phone', 40);
         $address = $this->text('address', 255);
         $website = $this->text('website');
+        $prefixInput = $this->text('admission_prefix', 12);
+        if ($prefixInput === null) { $this->fail('Student ID prefix must be 12 characters or fewer.', '/school/profile'); }
+        $prefix = preg_replace('/[^A-Z0-9]/', '', strtoupper($prefixInput)) ?? '';
+        if ($prefixInput !== '' && $prefix === '') { $this->fail('Student ID prefix must contain at least one letter or number.', '/school/profile'); }
         if ($name === null || $name === '' || $phone === null || $address === null || $website === null) {
             $this->fail('The school name is required and some values are too long.', '/school/profile');
         }
@@ -37,8 +41,8 @@ final class SchoolProfileController extends BaseController
             $this->fail('The website address is not valid.', '/school/profile');
         }
         DB::run(
-            'UPDATE schools SET name = ?, email = ?, phone = ?, address = ?, website = ? WHERE id = ?',
-            [$name, $email ?: null, $phone ?: null, $address ?: null, $website ?: null, $this->sid()]
+            'UPDATE schools SET name = ?, email = ?, phone = ?, address = ?, website = ?, admission_prefix = ? WHERE id = ?',
+            [$name, $email ?: null, $phone ?: null, $address ?: null, $website ?: null, $prefix ?: null, $this->sid()]
         );
         AuditLog::record('school.profile_updated', 'school', $this->sid());
         $this->ok('School profile saved.', '/school/profile');

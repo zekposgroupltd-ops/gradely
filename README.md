@@ -20,3 +20,22 @@ School Admin: everything in one school. Teacher: per-permission (students, score
 - Result display setting (grades / positions / both) is enforced on the server for the portal, report cards and print.
 - Results move draft → approved → published. Scores and recompute are locked while approved/published.
 - Every tenant table carries `school_id` and composite foreign keys so the database itself refuses cross-school references.
+
+
+## Production-safe feature upgrade (17 Nov 2026)
+
+This release adds school logo presentation, student ID prefixes/auto IDs, a limited teacher role, PIN purchase requests and approval, class-scoped PIN batches, PDF print entitlement checks, and a refreshed public result landing page. It is an additive upgrade for an existing deployment.
+
+**Before deploying:** take a database backup and retain your current `.env`. Do not run `tools/install_schema.php` on an existing database. That script is for an empty database only.
+
+After the new source files are deployed, run:
+
+```sh
+php tools/upgrade_2026_11_17.php
+```
+
+The upgrade script only adds the `admission_prefix` column, PIN request table and batch metadata/indexes/foreign keys, adds a default platform PIN price, and restricts teacher accounts to score entry. It does not drop or truncate data, recreate accounts, reset passwords, or replace the existing database. Back up first regardless.
+
+Set the result-checking PIN price under **Super Admin → Settings**. Schools then request PINs for a class or the whole school; the platform administrator verifies payment and approves the request; the school generates the approved PIN batch. Admin-side report-sheet printing is enabled only when the school has fulfilled an approved PIN request with enough valid PINs for the class or whole school. Old pre-upgrade card batches remain usable for result checking, but do not count as a paid allocation for admin PDF printing.
+
+Schools can upload their own logo under **School Profile → School logo**. They can set a student ID prefix (for example `SGW`); leaving a new student's ID blank generates the next ID (`SGW0001`, `SGW0002`, etc.). Teachers are limited to five accounts per school and can only upload scores for assigned subjects/classes.

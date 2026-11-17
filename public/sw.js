@@ -4,7 +4,7 @@
  * sit in a shared phone's cache. Only static design assets and a generic offline page are stored.
  * Bump VERSION on every release so installed apps pick up new assets.
  */
-const VERSION = 'gradely-v4';
+const VERSION = 'gradely-v5';
 const STATIC_CACHE = VERSION + '-static';
 const scope = self.registration.scope; // always ends with "/", works under a sub-folder too
 const abs = (p) => new URL(p, scope).href;

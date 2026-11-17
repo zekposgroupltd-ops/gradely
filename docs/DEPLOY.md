@@ -69,3 +69,32 @@ Check `git status` shows no `.env` (it is in `.gitignore`). Never commit real se
 - **Free plan sleeps** after 30 idle minutes (first request is slow). Use Pro for a live school portal on result day.
 - Keep the Free plan's **512 MB database** in mind for large schools.
 - Run `tests/card_concurrency_mysql.php` against a throw-away MySQL database before issuing real cards (see above).
+
+
+## Applying the 17 Nov 2026 additive upgrade to an existing live database
+
+1. Back up the live MySQL database and keep a copy of the currently deployed source.
+2. Deploy the updated source files without replacing `.env` or the database.
+3. Run `php tools/upgrade_2026_11_17.php` once against the existing database. If using EthioDeploy without shell access, temporarily set `AUTO_UPGRADE_2026_11_17=1` in environment variables and redeploy; check deployment logs for `GRADELY additive upgrade complete`, then remove the variable or set it to `0`. The script is idempotent and additive; it does not reset accounts or existing academic records.
+4. Sign in with the existing Super Admin account and set **PIN price per student** under Platform Settings.
+5. Open a school account, set its student ID prefix under School Profile, and upload the school's PNG/JPG logo.
+6. Test a small PIN request and approval using a test class before enabling the process for all schools.
+
+Do not run `tools/install_schema.php` against a live database. Do not run `DROP`, `TRUNCATE`, or a fresh schema import on the deployed database.
+
+
+## 17 November 2026 production enhancement
+
+After deploying the updated source to the existing EthioDeploy application, run the additive MySQL upgrade once from the project root:
+
+```sh
+php tools/upgrade_2026_11_17.php
+```
+
+This script only adds the nullable `schools.teacher_limit` column and the `result_verifications` table when missing, alongside the existing additive upgrade steps. It does not delete tables, schools, users, passwords, students, scores or published results.
+
+The Super Administrator can set each school's active-teacher limit on its **Super Admin → Schools → school details** page: Unlimited (default), 5, 10 or 20. The cap is enforced inside a transaction while locking the school row; teacher score-entry permissions and class/subject assignments remain unchanged.
+
+Published report cards include a Code 128 verification barcode. The public `/verify` page accepts a code or URL, and the landing page includes a camera scanner where the browser supports the BarcodeDetector API. Camera use requires HTTPS and the camera permission policy is restricted to this same origin. The verification endpoint reveals only school, student ID/name, session and term—not report marks or a PDF.
+
+The `APP_SECRET` must remain configured as a strong 32+ character environment variable. Do not place a live secret in Git or in this ZIP. Do not rotate an existing production secret unless you intentionally plan to invalidate previously issued scratch-card PINs.

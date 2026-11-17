@@ -9,12 +9,13 @@
       <?= field_html('Phone', 'phone', (string) $s['phone'], 'tel', ['maxlength' => '40']) ?>
       <?= field_html('Address', 'address', (string) $s['address'], 'text', ['maxlength' => '255']) ?>
       <?= field_html('Website', 'website', (string) $s['website'], 'text', ['maxlength' => '190', 'placeholder' => 'https://']) ?>
+      <?= field_html('Student ID prefix', 'admission_prefix', (string) ($s['admission_prefix'] ?? ''), 'text', ['maxlength' => '12', 'placeholder' => 'e.g. SGW'], '(letters/numbers used for automatic IDs, e.g. SGW0001)') ?>
       <button class="btn btn-primary" type="submit">Save changes</button>
     </form>
   </section>
   <section class="card">
-    <div class="card-head"><h2>School logo</h2></div>
-    <p class="muted mb">Shown on report cards and the result portal. PNG or JPG, up to 2 MB.</p>
+    <div class="card-head"><h2>School logo for report sheets</h2></div>
+    <p class="muted mb">Your uploaded school logo appears at the top of every student report sheet and on your result portal. PNG or JPG, up to 2 MB. GRADELY branding stays discreet in the report footer.</p>
     <?php if (!empty($s['logo_path'])): ?>
       <img class="logo-preview" src="<?= e(url('media/logo/' . $s['id']) . '?v=' . time()) ?>" alt="Current school logo" width="120" height="120">
     <?php else: ?>

@@ -1,6 +1,6 @@
 <?php /** @var array $teachers */ ?>
-<div class="toolbar"><span class="muted">Teachers can only enter scores for the classes and subjects you assign to them.</span>
-  <a class="btn btn-primary btn-sm" href="<?= e(url('/school/teachers/new')) ?>"><?= icon('plus', 16) ?> Add teacher</a></div>
+<div class="toolbar"><span class="muted">Teachers can only upload subject scores. Active teacher accounts: <?= (int)$teacherCount ?> / <?= $teacherLimit === null ? 'Unlimited' : (int)$teacherLimit ?>.</span>
+  <?php if ($teacherLimit === null || $teacherCount < $teacherLimit): ?><a class="btn btn-primary btn-sm" href="<?= e(url('/school/teachers/new')) ?>"><?= icon('plus', 16) ?> Add teacher</a><?php endif; ?></div>
 <section class="card">
   <?php if (!$teachers): ?><p class="empty">No teachers yet.</p><?php else: ?>
   <div class="table-wrap"><table class="table">

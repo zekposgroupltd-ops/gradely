@@ -18,7 +18,7 @@ $phone = Platform::get('support_phone');
     </a>
     <a class="portal-staff" href="<?= e(url('/login')) ?>">Staff sign in</a>
   </header>
-  <main class="portal-main">
+  <main class="<?= $school === null ? 'portal-main-wide' : 'portal-main' ?>">
     <?= flash_html() ?>
     <?= $content ?>
     <div class="portal-install">
@@ -26,6 +26,7 @@ $phone = Platform::get('support_phone');
       <?php require BASE_PATH . '/app/Views/partials/ios_hint.php'; ?>
     </div>
   </main>
+  <script src="<?= e(asset('js/verify-scanner.js')) ?>" defer></script>
   <footer class="portal-foot">
     <p>GRADELY · Academic Results. Simplified. · Powered by Techpreneur</p>
     <?php if ($email !== '' || $phone !== ''): ?>

@@ -8,7 +8,7 @@ use App\Core\DB;
 /** Platform-wide settings managed by the Super Administrator (support contact, announcement banner). */
 final class Platform
 {
-    public const KEYS = ['support_email', 'support_phone', 'announcement'];
+    public const KEYS = ['support_email', 'support_phone', 'announcement', 'pin_price_per_student'];
     private static ?array $cache = null;
 
     public static function all(): array

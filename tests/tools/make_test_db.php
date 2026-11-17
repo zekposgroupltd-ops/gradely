@@ -55,7 +55,7 @@ foreach ($schools as [$name, $slug, $status, $k]) {
     DB::insert("INSERT INTO users (school_id, name, email, password_hash, role) VALUES (?,?,?,?, 'school_admin')", [$sid, "$name Admin", "$k-admin@test.local", $pw('AdminPass#12345')]);
     if ($k === 'a') {
         $tid = DB::insert("INSERT INTO users (school_id, name, email, password_hash, role) VALUES (?,?,?,?, 'teacher')", [$sid, 'Alpha Teacher', 'a-teacher@test.local', $pw('TeacherPass#12345')]);
-        DB::insert("INSERT INTO user_permissions (user_id, permission) VALUES (?, 'score.enter')", [$tid]);
+        DB::insert("INSERT INTO user_permissions (user_id, permission) VALUES (?, 'scores.enter')", [$tid]);
     }
 }
 echo "test db ready: $dbFile\n";

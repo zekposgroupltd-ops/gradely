@@ -17,6 +17,8 @@ CREATE TABLE schools (
   address VARCHAR(255) NULL,
   website VARCHAR(190) NULL,
   logo_path VARCHAR(255) NULL,
+  admission_prefix VARCHAR(12) NULL,
+  teacher_limit INT UNSIGNED NULL DEFAULT NULL,
   status ENUM('active','suspended','inactive') NOT NULL DEFAULT 'active',
   plan VARCHAR(40) NOT NULL DEFAULT 'standard',
   license_expires_on DATE NULL,
@@ -286,18 +288,66 @@ CREATE TABLE result_publications (
   CONSTRAINT fk_pub_term FOREIGN KEY (term_id, school_id) REFERENCES terms (id, school_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Public authenticity tokens for exact published report snapshots.
+CREATE TABLE result_verifications (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  token CHAR(32) NOT NULL,
+  school_id INT UNSIGNED NOT NULL,
+  term_id INT UNSIGNED NOT NULL,
+  student_id INT UNSIGNED NOT NULL,
+  snapshot_hash CHAR(64) NOT NULL,
+  issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  revoked_at DATETIME NULL,
+  UNIQUE KEY uq_result_verification_token (token),
+  KEY ix_result_verification_student (school_id, term_id, student_id, revoked_at),
+  CONSTRAINT fk_rv_school FOREIGN KEY (school_id) REFERENCES schools(id),
+  CONSTRAINT fk_rv_term FOREIGN KEY (term_id, school_id) REFERENCES terms(id, school_id),
+  CONSTRAINT fk_rv_student FOREIGN KEY (student_id, school_id) REFERENCES students(id, school_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE pin_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  school_id INT UNSIGNED NOT NULL,
+  term_id INT UNSIGNED NOT NULL,
+  class_id INT UNSIGNED NULL,
+  quantity INT UNSIGNED NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  total_amount DECIMAL(12,2) NOT NULL,
+  status ENUM('pending','approved','rejected','fulfilled') NOT NULL DEFAULT 'pending',
+  requested_by INT UNSIGNED NULL,
+  reviewed_by INT UNSIGNED NULL,
+  review_note VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME NULL,
+  fulfilled_at DATETIME NULL,
+  UNIQUE KEY uq_pinreq_id_school (id, school_id),
+  KEY ix_pinreq_school_status (school_id, status, created_at),
+  KEY ix_pinreq_term_class (school_id, term_id, class_id),
+  CONSTRAINT fk_pinreq_school FOREIGN KEY (school_id) REFERENCES schools(id),
+  CONSTRAINT fk_pinreq_term FOREIGN KEY (term_id, school_id) REFERENCES terms(id, school_id),
+  CONSTRAINT fk_pinreq_class FOREIGN KEY (class_id, school_id) REFERENCES classes(id, school_id),
+  CONSTRAINT fk_pinreq_requester FOREIGN KEY (requested_by, school_id) REFERENCES users(id, school_id),
+  CONSTRAINT fk_pinreq_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE scratch_card_batches (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   school_id INT UNSIGNED NOT NULL,
   session_id INT UNSIGNED NOT NULL,
   term_id INT UNSIGNED NOT NULL,
+  class_id INT UNSIGNED NULL,
+  request_id BIGINT UNSIGNED NULL,
   quantity INT UNSIGNED NOT NULL,
   label VARCHAR(100) NULL,
   created_by INT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_batches_id_school (id, school_id),
   CONSTRAINT fk_batch_session FOREIGN KEY (session_id, school_id) REFERENCES academic_sessions (id, school_id),
-  CONSTRAINT fk_batch_term FOREIGN KEY (term_id, school_id) REFERENCES terms (id, school_id)
+  UNIQUE KEY uq_batch_request (request_id),
+  KEY ix_batch_class_term (school_id, term_id, class_id),
+  CONSTRAINT fk_batch_term FOREIGN KEY (term_id, school_id) REFERENCES terms (id, school_id),
+  CONSTRAINT fk_batch_class FOREIGN KEY (class_id, school_id) REFERENCES classes (id, school_id),
+  CONSTRAINT fk_batch_request FOREIGN KEY (request_id, school_id) REFERENCES pin_requests (id, school_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- PINs are never stored in plaintext: pin_hash = HMAC-SHA256(pin, APP_SECRET).
@@ -372,6 +422,8 @@ CREATE TABLE platform_settings (
   skey VARCHAR(60) NOT NULL PRIMARY KEY,
   svalue VARCHAR(500) NOT NULL DEFAULT ''
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO platform_settings (skey, svalue) VALUES ('pin_price_per_student', '0.00');
 
 CREATE TABLE rate_limits (
   rkey CHAR(64) NOT NULL PRIMARY KEY,

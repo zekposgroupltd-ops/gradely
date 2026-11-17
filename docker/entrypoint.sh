@@ -10,4 +10,9 @@ chown -R www-data:www-data storage
 if [ "${AUTO_INSTALL_SCHEMA:-1}" = "1" ]; then
   php tools/install_schema.php || echo "WARNING: schema install failed; check DB_* variables" >&2
 fi
+# One-time additive production upgrade. Set AUTO_UPGRADE_2026_11_17=1 for one deployment,
+# verify the completion line in logs, then remove the variable or set it to 0.
+if [ "${AUTO_UPGRADE_2026_11_17:-0}" = "1" ]; then
+  php tools/upgrade_2026_11_17.php
+fi
 exec "$@"

@@ -64,6 +64,42 @@ final class SuperToolsController extends BaseController
         View::render('super/cards', ['title' => 'Scratch-card monitor', 'perSchool' => $perSchool, 'totals' => $totals, 'recent' => $recent]);
     }
 
+    public function pinRequests(): void
+    {
+        $rows = DB::all("SELECT pr.*, s.name AS school_name, t.name AS term_name, se.name AS session_name, c.name AS class_name, u.name AS requester_name FROM pin_requests pr JOIN schools s ON s.id = pr.school_id JOIN terms t ON t.id = pr.term_id AND t.school_id = pr.school_id JOIN academic_sessions se ON se.id = t.session_id AND se.school_id = t.school_id LEFT JOIN classes c ON c.id = pr.class_id AND c.school_id = pr.school_id LEFT JOIN users u ON u.id = pr.requested_by WHERE pr.status IN ('pending','approved','rejected','fulfilled') ORDER BY CASE pr.status WHEN 'pending' THEN 0 ELSE 1 END, pr.id DESC LIMIT 200");
+        View::render('super/pin_requests', ['title' => 'PIN purchase requests', 'rows' => $rows, 'price' => (float) Platform::get('pin_price_per_student')]);
+    }
+
+    public function approvePinRequest(int $id): void
+    {
+        $note = $this->text('review_note', 255) ?? '';
+        $request = DB::one("SELECT * FROM pin_requests WHERE id = ? AND status = 'pending'", [$id]);
+        if ($request === null) { $this->fail('This request is no longer pending.', '/super/pin-requests'); }
+        try {
+            DB::transaction(static function () use ($id, $note): void {
+                $sql = 'SELECT id, status FROM pin_requests WHERE id = ?'; if (DB::isMysql()) { $sql .= ' FOR UPDATE'; }
+                $r = DB::one($sql, [$id]);
+                if ($r === null || $r['status'] !== 'pending') { throw new \RuntimeException('Request has already been reviewed.'); }
+                DB::run("UPDATE pin_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW(), review_note = ? WHERE id = ?", [(int) Auth::user()['id'], $note ?: null, $id]);
+            });
+        } catch (\RuntimeException $e) { $this->fail($e->getMessage(), '/super/pin-requests'); }
+        Notify::schoolAdmins((int) $request['school_id'], 'PIN request approved', 'Your request for ' . (int) $request['quantity'] . ' result-checking PIN(s) has been approved. You can now generate the PINs from Scratch Cards.');
+        AuditLog::record('pins.request_approved', 'pin_request', $id, ['quantity' => (int) $request['quantity'], 'amount' => $request['total_amount']]);
+        $this->ok('PIN request approved. The school can now generate its allocated PINs.', '/super/pin-requests');
+    }
+
+    public function rejectPinRequest(int $id): void
+    {
+        $note = $this->text('review_note', 255) ?? '';
+        $request = DB::one("SELECT * FROM pin_requests WHERE id = ? AND status = 'pending'", [$id]);
+        if ($request === null) { $this->fail('This request is no longer pending.', '/super/pin-requests'); }
+        $changed = DB::exec("UPDATE pin_requests SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_note = ? WHERE id = ? AND status = 'pending'", [(int) Auth::user()['id'], $note ?: null, $id]);
+        if ($changed !== 1) { $this->fail('This request has already been reviewed.', '/super/pin-requests'); }
+        Notify::schoolAdmins((int) $request['school_id'], 'PIN request not approved', 'Your request for ' . (int) $request['quantity'] . ' result-checking PIN(s) was not approved. Contact platform support if you need clarification.');
+        AuditLog::record('pins.request_rejected', 'pin_request', $id, ['note' => $note]);
+        $this->ok('PIN request rejected.', '/super/pin-requests');
+    }
+
     public function admins(): void
     {
         View::render('super/admins', [
@@ -151,6 +187,10 @@ final class SuperToolsController extends BaseController
         $email = (string) $this->text('support_email');
         $phone = (string) $this->text('support_phone', 40);
         $ann = $this->text('announcement', 400);
+        $pinPrice = trim(Http::input('pin_price_per_student'));
+        if ($pinPrice === '' || !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $pinPrice) || (float) $pinPrice < 0) {
+            $this->fail('Enter a valid non-negative PIN price per student.', '/super/settings');
+        }
         if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->fail('The support email is not valid.', '/super/settings');
         }
@@ -160,6 +200,7 @@ final class SuperToolsController extends BaseController
         Platform::set('support_email', $email);
         Platform::set('support_phone', $phone);
         Platform::set('announcement', $ann);
+        Platform::set('pin_price_per_student', number_format((float) $pinPrice, 2, '.', ''));
         AuditLog::record('platform.settings_updated', 'platform_settings');
         $this->ok('Platform settings saved.', '/super/settings');
     }

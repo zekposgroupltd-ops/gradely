@@ -3,13 +3,20 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
-use App\Core\{Auth, AuditLog, DB, Http, Permissions, View};
+use App\Core\{Auth, AuditLog, DB, Http, View};
 use App\Services\Passwords;
 
 /** School administrator: teacher accounts, permissions and class/subject assignments. */
 final class TeachersController extends BaseController
 {
     private const BACK = '/school/teachers';
+    /** NULL means unlimited; otherwise the Super Admin configured active-account cap. */
+    private function teacherLimit(): ?int
+    {
+        $value = DB::val('SELECT teacher_limit FROM schools WHERE id = ?', [$this->sid()]);
+        return $value === null ? null : max(0, (int) $value);
+    }
+
 
     public function index(): void
     {
@@ -19,12 +26,15 @@ final class TeachersController extends BaseController
              FROM users u WHERE u.school_id = ? AND u.role = 'teacher' ORDER BY u.name",
             [$this->sid()]
         );
-        View::render('school/teachers', ['title' => 'Teachers', 'teachers' => $teachers]);
+        View::render('school/teachers', ['title' => 'Teachers', 'teachers' => $teachers, 'teacherCount' => (int) DB::val("SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'teacher' AND status = 'active'", [$this->sid()]), 'teacherLimit' => $this->teacherLimit()]);
     }
 
     public function create(): void
     {
-        View::render('school/teacher_new', ['title' => 'Add teacher']);
+        $count = (int) DB::val("SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'teacher' AND status = 'active'", [$this->sid()]);
+        $limit = $this->teacherLimit();
+        if ($limit !== null && $count >= $limit) { $this->fail('Your school has reached its configured limit of ' . $limit . ' active teacher accounts. Contact the GRADELY Super Administrator if you need a higher limit.', self::BACK); }
+        View::render('school/teacher_new', ['title' => 'Add teacher', 'remaining' => $limit === null ? null : $limit - $count, 'teacherLimit' => $limit]);
     }
 
     public function store(): void
@@ -32,7 +42,7 @@ final class TeachersController extends BaseController
         $name = $this->text('name', 150);
         $email = strtolower((string) $this->text('email'));
         $password = (string) ($_POST['password'] ?? '');
-        $perms = Permissions::clean(is_array($_POST['perm'] ?? null) ? array_keys($_POST['perm']) : []);
+        $perms = ['scores.enter'];
         $old = ['name' => $name, 'email' => $email];
         $back = '/school/teachers/new';
 
@@ -53,7 +63,13 @@ final class TeachersController extends BaseController
         }
 
         $sid = $this->sid();
+        try {
         $id = DB::transaction(static function () use ($sid, $name, $email, $password, $perms): int {
+            $lock = 'SELECT id FROM schools WHERE id = ?'; if (DB::isMysql()) { $lock .= ' FOR UPDATE'; }
+            DB::one($lock, [$sid]);
+            $limitValue = DB::val('SELECT teacher_limit FROM schools WHERE id = ?', [$sid]);
+            $limit = $limitValue === null ? null : (int) $limitValue;
+            if ($limit !== null && (int) DB::val("SELECT COUNT(*) FROM users WHERE school_id = ? AND role = 'teacher' AND status = 'active'", [$sid]) >= $limit) { throw new \RuntimeException('Your school has reached its configured limit of ' . $limit . ' active teacher accounts.'); }
             $uid = DB::insert(
                 "INSERT INTO users (school_id, name, email, password_hash, role) VALUES (?,?,?,?, 'teacher')",
                 [$sid, $name, $email, Auth::hash($password)]
@@ -63,6 +79,7 @@ final class TeachersController extends BaseController
             }
             return $uid;
         });
+        } catch (\RuntimeException $e) { $this->fail($e->getMessage(), self::BACK); }
         AuditLog::record('teacher.created', 'user', $id, ['email' => $email]);
         $msg = "Teacher account created for $email.";
         $msg .= $generated ? " Temporary password: $password (shown once, copy it now)." : '';
@@ -110,7 +127,7 @@ final class TeachersController extends BaseController
         $back = "/school/teachers/$id/edit";
         $name = $this->text('name', 150);
         $status = Http::input('status') === 'disabled' ? 'disabled' : 'active';
-        $perms = Permissions::clean(is_array($_POST['perm'] ?? null) ? array_keys($_POST['perm']) : []);
+        $perms = ['scores.enter'];
         $newPw = (string) ($_POST['new_password'] ?? '');
         if ($name === null || $name === '') {
             $this->fail('Enter the teacher\'s name.', $back);

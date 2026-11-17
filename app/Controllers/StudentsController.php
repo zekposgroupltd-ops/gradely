@@ -105,8 +105,8 @@ final class StudentsController extends BaseController
         }
         $d['gender'] = $g ?: null;
 
-        if ($d['admission_no'] === '' || strlen($d['admission_no']) > 40 || !preg_match('/^[A-Za-z0-9\/._-]+$/', $d['admission_no'])) {
-            return ['The student ID is required (letters, numbers, / . _ - only, up to 40 characters).', $d];
+        if (($d['admission_no'] === '' && $ignoreId !== null) || strlen($d['admission_no']) > 40 || ($d['admission_no'] !== '' && !preg_match('/^[A-Za-z0-9\/._-]+$/', $d['admission_no']))) {
+            return ['Enter a valid student ID, or leave it blank when adding a new student to generate one automatically.', $d];
         }
         foreach (['first_name' => 'First name', 'last_name' => 'Last name'] as $k => $label) {
             if ($d[$k] === '' || mb_strlen($d[$k]) > 80) {
@@ -130,7 +130,7 @@ final class StudentsController extends BaseController
         if ($d['arm_id'] !== null && DB::val('SELECT COUNT(*) FROM class_arms WHERE id = ? AND class_id = ? AND school_id = ?', [$d['arm_id'], $d['class_id'], $this->sid()]) == 0) {
             return ['That arm does not belong to the chosen class.', $d];
         }
-        $dup = DB::val('SELECT id FROM students WHERE school_id = ? AND admission_no = ?', [$this->sid(), $d['admission_no']]);
+        $dup = $d['admission_no'] !== '' ? DB::val('SELECT id FROM students WHERE school_id = ? AND admission_no = ?', [$this->sid(), $d['admission_no']]) : null;
         if ($dup !== null && (int) $dup !== $ignoreId) {
             return ['Another student already uses that student ID.', $d];
         }
@@ -152,16 +152,43 @@ final class StudentsController extends BaseController
         return checkdate($m, $dd, $y) && $y > 1900 ? sprintf('%04d-%02d-%02d', $y, $m, $dd) : null;
     }
 
+    /** Generate the next school-scoped ID from the configured prefix (e.g. SGW0001). */
+    private function nextAdmissionNo(int $sid, array $school, array $reserved = []): string
+    {
+        $prefix = strtoupper((string) ($school['admission_prefix'] ?? ''));
+        if ($prefix === '') {
+            preg_match_all('/[A-Za-z0-9]+/u', (string) $school['name'], $words);
+            $prefix = implode('', array_map(static fn($w) => strtoupper(substr($w, 0, 1)), $words[0] ?? []));
+            $prefix = substr($prefix ?: 'STD', 0, 8);
+        }
+        $used = DB::all('SELECT admission_no FROM students WHERE school_id = ? AND admission_no LIKE ?', [$sid, $prefix . '%']);
+        $max = 0;
+        foreach ($used as $row) {
+            if (preg_match('/^' . preg_quote($prefix, '/') . '(\d{4,})$/i', (string) $row['admission_no'], $m)) { $max = max($max, (int) $m[1]); }
+        }
+        do { $candidate = $prefix . str_pad((string) (++$max), 4, '0', STR_PAD_LEFT); }
+        while (isset($reserved[strtolower($candidate)]) || DB::val('SELECT COUNT(*) FROM students WHERE school_id = ? AND admission_no = ?', [$sid, $candidate]) > 0);
+        return $candidate;
+    }
+
     public function store(): void
     {
         [$err, $d] = $this->clean($_POST, null);
         if ($err !== null) {
             $this->fail($err, '/school/students/new', $_POST);
         }
-        $id = DB::insert(
-            'INSERT INTO students (school_id, admission_no, first_name, last_name, other_name, gender, date_of_birth, class_id, arm_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)',
-            [$this->sid(), $d['admission_no'], $d['first_name'], $d['last_name'], $d['other_name'] ?: null, $d['gender'], $d['date_of_birth'], $d['class_id'], $d['arm_id'], 'active']
-        );
+        $sid = $this->sid();
+        $id = DB::transaction(function () use ($sid, &$d): int {
+            $schoolSql = 'SELECT name, admission_prefix FROM schools WHERE id = ?';
+            if (DB::isMysql()) { $schoolSql .= ' FOR UPDATE'; }
+            $school = DB::one($schoolSql, [$sid]);
+            if ($school === null) { throw new \RuntimeException('School account not found.'); }
+            if ($d['admission_no'] === '') { $d['admission_no'] = $this->nextAdmissionNo($sid, $school); }
+            return DB::insert(
+                'INSERT INTO students (school_id, admission_no, first_name, last_name, other_name, gender, date_of_birth, class_id, arm_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                [$sid, $d['admission_no'], $d['first_name'], $d['last_name'], $d['other_name'] ?: null, $d['gender'], $d['date_of_birth'], $d['class_id'], $d['arm_id'], 'active']
+            );
+        });
         AuditLog::record('student.created', 'student', $id, ['admission_no' => $d['admission_no']]);
         $this->ok($d['first_name'] . ' ' . $d['last_name'] . ' added.', self::BACK);
     }
@@ -199,7 +226,7 @@ final class StudentsController extends BaseController
 
     public function template(): void
     {
-        $this->csv('students-template.csv', [['admission_no', 'first_name', 'last_name', 'other_name', 'gender', 'date_of_birth', 'class', 'arm'], ['2026/001', 'Ada', 'Obi', '', 'F', '2014-05-21', 'JSS 1', 'A']]);
+        $this->csv('students-template.csv', [['admission_no', 'first_name', 'last_name', 'other_name', 'gender', 'date_of_birth', 'class', 'arm'], ['', 'Ada', 'Obi', '', 'F', '2014-05-21', 'JSS 1', 'A']]);
     }
 
     public function export(): void
@@ -244,7 +271,7 @@ final class StudentsController extends BaseController
                 $map[$h] = self::ALIASES[$h];
             }
         }
-        $missing = array_diff(['admission_no', 'first_name', 'last_name', 'class'], array_values($map));
+        $missing = array_diff(['first_name', 'last_name', 'class'], array_values($map));
         if ($missing) {
             $this->fail('The file is missing required column(s): ' . implode(', ', $missing) . '. Download the template to see the expected headers.', '/school/students/import');
         }
@@ -283,22 +310,30 @@ final class StudentsController extends BaseController
                 }
             }
             [$err, $d] = $this->clean($r + ['class_id' => $classId, 'arm_id' => $armId], null);
-            if ($err === null && isset($seen[$d['admission_no']])) {
-                $err = 'Duplicate student ID inside the file (also on row ' . $seen[$d['admission_no']] . ').';
+            $idKey = strtolower($d['admission_no']);
+            if ($err === null && $d['admission_no'] !== '' && isset($seen[$idKey])) {
+                $err = 'Duplicate student ID inside the file (also on row ' . $seen[$idKey] . ').';
             }
             if ($err !== null) {
                 $errors[] = [$line, $r['admission_no'] ?? '', $err];
                 continue;
             }
-            $seen[$d['admission_no']] = $line;
+            if ($d['admission_no'] !== '') { $seen[$idKey] = $line; }
             $good[] = $d;
         }
 
         DB::transaction(function () use ($good, $sid): void {
+            $lock = 'SELECT name, admission_prefix FROM schools WHERE id = ?'; if (DB::isMysql()) { $lock .= ' FOR UPDATE'; }
+            $school = DB::one($lock, [$sid]);
+            if ($school === null) { throw new \RuntimeException('School account not found.'); }
+            $reserved = [];
+            foreach ($good as $row) { if ($row['admission_no'] !== '') { $reserved[strtolower($row['admission_no'])] = true; } }
             foreach ($good as $d) {
+                $admissionNo = $d['admission_no'] !== '' ? $d['admission_no'] : $this->nextAdmissionNo($sid, $school, $reserved);
+                $reserved[strtolower($admissionNo)] = true;
                 DB::insert(
                     'INSERT INTO students (school_id, admission_no, first_name, last_name, other_name, gender, date_of_birth, class_id, arm_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                    [$sid, $d['admission_no'], $d['first_name'], $d['last_name'], $d['other_name'] ?: null, $d['gender'], $d['date_of_birth'], $d['class_id'], $d['arm_id'], 'active']
+                    [$sid, $admissionNo, $d['first_name'], $d['last_name'], $d['other_name'] ?: null, $d['gender'], $d['date_of_birth'], $d['class_id'], $d['arm_id'], 'active']
                 );
             }
         });

@@ -109,7 +109,7 @@ function badge_html(string $text, string $color = 'gray'): string
 function status_badge(string $status): string
 {
     $map = [
-        'active' => 'green', 'published' => 'green', 'approved' => 'blue', 'draft' => 'amber', 'none' => 'gray',
+        'active' => 'green', 'published' => 'green', 'approved' => 'blue', 'fulfilled' => 'green', 'pending' => 'amber', 'rejected' => 'red', 'draft' => 'amber', 'none' => 'gray',
         'exhausted' => 'gray', 'revoked' => 'red', 'expired' => 'amber', 'suspended' => 'amber', 'inactive' => 'gray',
         'disabled' => 'red', 'withdrawn' => 'gray', 'graduated' => 'blue', 'mixed' => 'amber',
     ];

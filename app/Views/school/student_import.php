@@ -24,10 +24,11 @@
 <section class="card">
   <div class="card-head"><h2>Import students from Excel or CSV</h2></div>
   <ol class="steps">
-    <li>Download the template and fill one student per row. Required: <code>admission_no</code>, <code>first_name</code>, <code>last_name</code>, <code>class</code>.</li>
+    <li>Download the template and fill one student per row. Required: <code>first_name</code>, <code>last_name</code>, <code>class</code>. Student ID is optional; leave it blank to generate one automatically.</li>
     <li>The <code>class</code> (and optional <code>arm</code>) must already exist under Classes.</li>
     <li>Upload the file (.xlsx or .csv, up to 2 MB and 2,000 rows).</li>
   </ol>
+  <p class="muted small">For example, with the school prefix SGW, new records are assigned SGW0001, SGW0002 and so on. You can still enter your own student IDs.</p>
   <p><a class="btn btn-ghost btn-sm" href="<?= e(url('/school/students/template.csv')) ?>"><?= icon('download', 16) ?> Download template</a></p>
   <form class="form" method="post" action="<?= e(url('/school/students/import')) ?>" enctype="multipart/form-data">
     <?= csrf_field() ?>

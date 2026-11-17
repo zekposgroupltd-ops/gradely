@@ -28,7 +28,7 @@
 <?php endif; ?>
 
 <section class="card mb">
-  <div class="card-head"><h2>Batch #<?= e($b['id']) ?> <?= e($b['label'] ?? '') ?></h2><span class="muted"><?= e($b['session_name'] . ' · ' . $b['term_name']) ?></span></div>
+  <div class="card-head"><h2>Batch #<?= e($b['id']) ?> <?= e($b['label'] ?? '') ?></h2><span class="muted"><?= e($b['session_name'] . ' · ' . $b['term_name']) ?> · <?= e($b['class_name'] ?? 'Entire school') ?></span></div>
   <div class="stat-row">
     <div class="stat-mini"><b><?= e($stats['total']) ?></b><span>cards</span></div>
     <div class="stat-mini"><b><?= e($stats['unused']) ?></b><span>unused</span></div>

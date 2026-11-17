@@ -128,6 +128,8 @@ final class SuperSchoolsController extends BaseController
         $address = $this->text('address', 255);
         $plan = $this->text('plan', 40);
         $lic = Http::input('license_expires_on');
+        $teacherLimitRaw = trim(Http::input('teacher_limit'));
+        $teacherLimit = $teacherLimitRaw === '' ? null : (int) $teacherLimitRaw;
         $back = '/super/schools/' . $id;
         if ($name === null || $name === '' || $phone === null || $address === null || $plan === null) {
             $this->fail('Check the school details: the name is required and some values are too long.', $back);
@@ -138,11 +140,14 @@ final class SuperSchoolsController extends BaseController
         if ($lic !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $lic)) {
             $this->fail('The licence expiry must be a date.', $back);
         }
+        if ($teacherLimitRaw !== '' && !in_array($teacherLimit, [5, 10, 20], true)) {
+            $this->fail('Choose unlimited, 5, 10 or 20 active teachers.', $back);
+        }
         DB::run(
-            'UPDATE schools SET name = ?, email = ?, phone = ?, address = ?, plan = ?, license_expires_on = ? WHERE id = ?',
-            [$name, $email ?: null, $phone ?: null, $address ?: null, $plan ?: 'standard', $lic ?: null, $id]
+            'UPDATE schools SET name = ?, email = ?, phone = ?, address = ?, plan = ?, license_expires_on = ?, teacher_limit = ? WHERE id = ?',
+            [$name, $email ?: null, $phone ?: null, $address ?: null, $plan ?: 'standard', $lic ?: null, $teacherLimit, $id]
         );
-        AuditLog::record('school.updated', 'school', $id, [], $id);
+        AuditLog::record('school.updated', 'school', $id, ['teacher_limit' => $teacherLimit], $id);
         $this->ok('School details saved.', $back);
     }
 

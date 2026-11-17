@@ -42,7 +42,8 @@ final class PortalController
         if ($asked && $school === null) {
             http_response_code(404);
         }
-        $schools = $school === null ? DB::all("SELECT name, slug FROM schools WHERE status = 'active' ORDER BY name") : [];
+        // The public landing page deliberately does not enumerate schools. The PIN identifies the school.
+        $schools = [];
         View::render('portal/home', [
             'title' => 'Check your result', 'school' => $school, 'schools' => $schools,
             'terms' => $school ? $this->terms((int) $school['id']) : [],
@@ -54,49 +55,71 @@ final class PortalController
     {
         Session::flash('error', $msg);
         Session::flashOld(['admission_no' => Http::input('admission_no'), 'term_id' => Http::input('term_id')]);
-        Http::redirect('/s/' . rawurlencode($slug));
+        Http::redirect($slug !== '' ? '/s/' . rawurlencode($slug) : '/');
     }
 
     public function check(): void
     {
         $slug = strtolower(Http::input('school'));
-        $school = $this->school($slug);
-        if ($school === null) {
-            Session::flash('error', 'Select your school first.');
-            Http::redirect('/');
-        }
-        $sid = (int) $school['id'];
-        $adm = Http::input('admission_no');
+        $publicLookup = $slug === '';
+        $backSlug = $publicLookup ? '' : $slug;
+        $adm = trim(Http::input('admission_no'));
         $pin = (string) ($_POST['pin'] ?? '');
-        $termId = (int) Http::input('term_id');
+        if ($adm === '' || strlen($adm) > 40 || $pin === '') {
+            $this->back($backSlug, 'Enter your student ID and result-checking PIN.');
+        }
+        $ipKey = 'portal:ip:' . Http::ip();
+        if (RateLimiter::tooMany($ipKey, 10, self::WINDOW)) {
+            $this->back($backSlug, 'Too many unsuccessful attempts. Please wait a while and try again.');
+        }
 
-        $keys = ['portal:ip:' . Http::ip() => 10, 'portal:stu:' . $sid . ':' . strtolower($adm) => 8, 'portal:school:' . $sid => 400];
-        foreach ($keys as $k => $max) {
-            if (RateLimiter::tooMany($k, $max, $k === 'portal:school:' . $sid ? 3600 : self::WINDOW)) {
-                $this->back($slug, 'Too many unsuccessful attempts. Please wait a while and try again.');
+        if ($slug === '') {
+            // PIN hash identifies the issuing school and term, so students never need to select a school.
+            $card = DB::one(
+                "SELECT c.school_id, c.term_id, s.slug FROM scratch_cards c JOIN schools s ON s.id = c.school_id AND s.status = 'active' WHERE c.pin_hash = ?",
+                [ScratchCardService::hashPin($pin)]
+            );
+            if ($card === null) {
+                RateLimiter::hit($ipKey, self::WINDOW);
+                $this->back('', 'We could not verify those details. Check your student ID and PIN, then try again.');
+            }
+            $sid = (int) $card['school_id'];
+            $termId = (int) $card['term_id'];
+            $slug = (string) $card['slug'];
+        } else {
+            $school = $this->school($slug);
+            if ($school === null) {
+                RateLimiter::hit($ipKey, self::WINDOW);
+                $this->back($backSlug, 'That school portal is not available.');
+            }
+            $sid = (int) $school['id'];
+            $termId = (int) Http::input('term_id');
+            if ($termId <= 0 || DB::val('SELECT COUNT(*) FROM terms WHERE id = ? AND school_id = ?', [$termId, $sid]) == 0) {
+                $this->back($backSlug, 'Choose a valid session and term.');
             }
         }
-        if ($adm === '' || strlen($adm) > 40 || $termId <= 0) {
-            $this->back($slug, 'Enter your student ID and choose the term.');
-        }
-        if (DB::val('SELECT COUNT(*) FROM terms WHERE id = ? AND school_id = ?', [$termId, $sid]) == 0) {
-            $this->back($slug, 'Choose a valid term.');
+
+        $studentKey = 'portal:stu:' . $sid . ':' . strtolower($adm);
+        $schoolKey = 'portal:school:' . $sid;
+        if (RateLimiter::tooMany($studentKey, 8, self::WINDOW) || RateLimiter::tooMany($schoolKey, 400, 3600)) {
+            $this->back($backSlug, 'Too many unsuccessful attempts. Please wait a while and try again.');
         }
 
         $res = ScratchCardService::redeem($sid, $termId, $adm, $pin, Http::ip(), (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
         if (!$res['ok']) {
             if ($res['code'] !== 'not_published') {
-                foreach ($keys as $k => $max) {
-                    RateLimiter::hit($k, $k === 'portal:school:' . $sid ? 3600 : self::WINDOW);
-                }
+                RateLimiter::hit($ipKey, self::WINDOW);
+                RateLimiter::hit($studentKey, self::WINDOW);
+                RateLimiter::hit($schoolKey, 3600);
             }
-            $this->back($slug, (string) $res['error']);
+            $this->back($backSlug, (string) $res['error']);
         }
 
         Session::regenerate();
         $_SESSION['portal'] = [
             'school_id' => $sid, 'term_id' => $termId, 'student_id' => (int) $res['student_id'],
             'remaining' => (int) $res['remaining'], 'until' => time() + self::VIEW_SECONDS, 'slug' => $slug,
+            'public_lookup' => $publicLookup,
         ];
         Http::redirect('/portal/result');
     }
@@ -118,14 +141,15 @@ final class PortalController
         }
         View::render('report/page', [
             'title' => 'Result - ' . $report['student']['first_name'] . ' ' . $report['student']['last_name'],
-            'reports' => [$report], 'portal' => true, 'remaining' => (int) $p['remaining'], 'back' => '/s/' . rawurlencode((string) $p['slug']),
+            'reports' => [$report], 'portal' => true, 'remaining' => (int) $p['remaining'], 'back' => !empty($p['public_lookup']) ? '/' : '/s/' . rawurlencode((string) $p['slug']),
         ], 'report');
     }
 
     public function finish(): void
     {
         $slug = $_SESSION['portal']['slug'] ?? '';
+        $public = !empty($_SESSION['portal']['public_lookup']);
         unset($_SESSION['portal']);
-        Http::redirect($slug !== '' ? '/s/' . rawurlencode((string) $slug) : '/');
+        Http::redirect($public || $slug === '' ? '/' : '/s/' . rawurlencode((string) $slug));
     }
 }

@@ -1,4 +1,5 @@
 <?php /** @var array $perSchool */ /** @var array $totals */ /** @var array $recent */ ?>
+<div class="tabs" role="navigation" aria-label="Platform cards"><a class="tab is-active" href="<?= e(url('/super/cards')) ?>">Card monitor</a><a class="tab" href="<?= e(url('/super/pin-requests')) ?>">PIN purchase requests</a><a class="tab" href="<?= e(url('/super/settings')) ?>">Pricing settings</a></div>
 <section class="stat-row mb">
   <div class="stat-mini"><b><?= e($totals['total']) ?></b><span>cards issued</span></div>
   <div class="stat-mini"><b><?= e($totals['unused']) ?></b><span>unused</span></div>

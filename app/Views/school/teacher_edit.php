@@ -15,12 +15,8 @@ foreach ($pairs as $p) { $byClass[$p['class_name']][] = $p; }
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>Permissions</h2></div>
-    <div class="check-grid">
-      <?php foreach (Permissions::LIST as $key => $label): ?>
-        <label class="check"><input type="checkbox" name="perm[<?= e($key) ?>]" value="1" <?= in_array($key, $perms, true) ? 'checked' : '' ?>><span><?= e($label) ?></span></label>
-      <?php endforeach; ?>
-    </div>
+    <div class="card-head"><h2>Access</h2></div>
+    <p class="muted">This account is restricted to uploading subject scores. The school administrator manages class and subject assignments.</p>
   </section>
 
   <section class="card">

@@ -11,8 +11,17 @@
   padding: 8mm; box-shadow: 0 6px 24px rgba(0, 0, 0, .12);
   font-family: Georgia, "Times New Roman", serif; font-size: 12px; line-height: 1.35;
 }
-.sheet-frame { border: 3px double #111; padding: 7mm 6mm; min-height: 270mm; display: flex; flex-direction: column; gap: 10px; }
+.sheet-frame { position: relative; border: 3px double #111; padding: 7mm 6mm; min-height: 270mm; display: flex; flex-direction: column; gap: 10px; }
 
+.rc-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
+.rc-watermark img { width: 95mm; height: 95mm; max-width: 75%; object-fit: contain; opacity: .055; filter: grayscale(1); }
+.sheet-frame > :not(.rc-watermark) { position: relative; z-index: 1; }
+.rc-verification { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px dashed #aaa; padding-top: 5px; font-family: ui-sans-serif, system-ui, sans-serif; }
+.rc-verification > div:first-child { display: grid; gap: 2px; }
+.rc-verification small { display: block; font-size: 8px; color: #444; }
+.rc-barcode { text-align: right; }
+.rc-barcode svg { display: block; max-width: 100%; height: 12mm; width: auto; margin-left: auto; }
+.rc-barcode small { font-size: 7px; letter-spacing: .08em; }
 .rc-head { display: flex; align-items: center; gap: 14px; justify-content: center; text-align: center; }
 .rc-logo { width: 22mm; height: 22mm; object-fit: contain; }
 .rc-school { font-size: 26px; font-style: italic; font-weight: 700; letter-spacing: .01em; margin: 0; line-height: 1.1; }
@@ -65,6 +74,8 @@
   .rc-school { font-size: 18px; }
   .rc-logo { width: 14mm; height: 14mm; }
   .rc-info { grid-template-columns: 1fr; }
+  .rc-verification { gap: 6px; }
+  .rc-barcode svg { height: 9mm; }
   .rc-table { font-size: 10.5px; }
   .slips { grid-template-columns: 1fr; }
 }

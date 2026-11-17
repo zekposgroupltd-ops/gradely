@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; T="${1:-$(mktemp -d)}"; mkdir -p "$T";
 echo "== lint";            bad=0; for f in $(find "$ROOT/app" "$ROOT/public" "$ROOT/tests" -name '*.php'); do php -l "$f" >/dev/null 2>&1 || { php -l "$f"; bad=1; }; done; [ $bad = 0 ] && echo "all PHP files lint clean" || rc=1
 echo "== env / DATABASE_URL"; run php "$ROOT/tests/env_test.php"
 echo "== engine";          run php "$ROOT/tests/engine_test.php" "$T"
+echo "== result verification"; run php "$ROOT/tests/verification_test.php"
 echo "== scratch cards";   run php "$ROOT/tests/cards_test.php" "$T"
 echo "== tenant isolation (DB)"; run php "$ROOT/tests/tenant_isolation_db.php" "$T"
 echo "== auth smoke";      run bash "$ROOT/tests/smoke_auth.sh" "$T/smoke"

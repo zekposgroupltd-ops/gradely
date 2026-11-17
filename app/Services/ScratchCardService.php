@@ -51,7 +51,7 @@ final class ScratchCardService
      * Creates a batch. The plaintext PINs are returned ONCE and never stored.
      * @return array{batch_id:int,cards:array<int,array{serial:string,pin:string}>}
      */
-    public static function generateBatch(int $sid, int $termId, int $qty, ?string $label, ?int $userId, ?string $expiresAt): array
+    public static function generateBatch(int $sid, int $termId, int $qty, ?string $label, ?int $userId, ?string $expiresAt, ?int $classId = null, ?int $requestId = null): array
     {
         $term = DB::one('SELECT id, session_id FROM terms WHERE id = ? AND school_id = ?', [$termId, $sid]);
         if ($term === null) {
@@ -60,10 +60,11 @@ final class ScratchCardService
         if ($qty < 1 || $qty > 1000) {
             throw new \RuntimeException('A batch must contain between 1 and 1000 cards.');
         }
-        return DB::transaction(static function () use ($sid, $term, $termId, $qty, $label, $userId, $expiresAt): array {
+        if ($classId !== null && DB::val('SELECT COUNT(*) FROM classes WHERE id = ? AND school_id = ?', [$classId, $sid]) == 0) { throw new \RuntimeException('The selected class does not belong to this school.'); }
+        return DB::transaction(static function () use ($sid, $term, $termId, $qty, $label, $userId, $expiresAt, $classId, $requestId): array {
             $batchId = DB::insert(
-                'INSERT INTO scratch_card_batches (school_id, session_id, term_id, quantity, label, created_by) VALUES (?,?,?,?,?,?)',
-                [$sid, $term['session_id'], $termId, $qty, $label, $userId]
+                'INSERT INTO scratch_card_batches (school_id, session_id, term_id, class_id, request_id, quantity, label, created_by) VALUES (?,?,?,?,?,?,?,?)',
+                [$sid, $term['session_id'], $termId, $classId, $requestId, $qty, $label, $userId]
             );
             $cards = [];
             for ($i = 0; $i < $qty; $i++) {
@@ -129,7 +130,7 @@ final class ScratchCardService
         if (strlen($digits) !== self::PIN_LENGTH) {
             return $fail('invalid_card', 'Enter the ' . self::PIN_LENGTH . '-digit PIN printed on your scratch card.');
         }
-        $card = DB::one('SELECT * FROM scratch_cards WHERE pin_hash = ?', [self::hashPin($digits)]);
+        $card = DB::one('SELECT c.*, b.class_id AS batch_class_id FROM scratch_cards c JOIN scratch_card_batches b ON b.id = c.batch_id AND b.school_id = c.school_id WHERE c.pin_hash = ?', [self::hashPin($digits)]);
         if ($card === null) {
             return $fail('invalid_card', 'That PIN is not valid. Check it and try again.');
         }
@@ -143,16 +144,19 @@ final class ScratchCardService
         }
 
         $student = DB::one(
-            "SELECT id FROM students WHERE school_id = ? AND LOWER(admission_no) = LOWER(?) AND status = 'active'",
+            "SELECT id, class_id FROM students WHERE school_id = ? AND LOWER(admission_no) = LOWER(?) AND status = 'active'",
             [$sid, trim($admissionNo)]
         );
         if ($student === null) {
             return $fail('student_not_found', 'No student with that ID was found in this school.');
         }
         $studentId = (int) $student['id'];
-        $published = (int) DB::val("SELECT COUNT(*) FROM result_summaries WHERE school_id = ? AND term_id = ? AND student_id = ? AND status = 'published'", [$sid, $termId, $studentId]);
-        if ($published === 0) {
+        $published = DB::one("SELECT class_id FROM result_summaries WHERE school_id = ? AND term_id = ? AND student_id = ? AND status = 'published'", [$sid, $termId, $studentId]);
+        if ($published === null) {
             return $fail('not_published', 'Results for this student and term are not available yet.');
+        }
+        if ($card['batch_class_id'] !== null && (int) $card['batch_class_id'] !== (int) $published['class_id']) {
+            return $fail('wrong_class', 'This result-checking PIN was purchased for a different class. Please use the PIN issued for your class.');
         }
         $bind = DB::val('SELECT card_binding FROM school_settings WHERE school_id = ?', [$sid]) === 'first_student';
         if ($bind && $card['bound_student_id'] !== null && (int) $card['bound_student_id'] !== $studentId) {

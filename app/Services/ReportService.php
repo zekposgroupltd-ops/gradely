@@ -89,8 +89,8 @@ final class ReportService
             $key = $bounds;
         }
 
-        return [
-            'school' => $school, 'cfg' => $cfg, 'student' => $student, 'term' => $term,
+        $report = [
+            'school' => $school, 'cfg' => $cfg, 'student' => $student, 'term' => $term, 'term_id' => $termId,
             'components' => $components, 'rows' => $rows, 'max_total' => $maxTotal,
             'summary' => [
                 'subjects' => (int) $sum['subjects_count'],
@@ -106,5 +106,14 @@ final class ReportService
             'teacher_comment' => $sum['teacher_comment'], 'principal_comment' => $sum['principal_comment'],
             'status' => $sum['status'],
         ];
+        if ($sum['status'] === 'published') {
+            $verification = ResultVerification::issue($report);
+            $report['verification'] = [
+                'token' => $verification['token'],
+                'url' => url('/verify/' . $verification['token']),
+                'barcode_svg' => Barcode128::svg(url('/verify/' . $verification['token'])),
+            ];
+        }
+        return $report;
     }
 }

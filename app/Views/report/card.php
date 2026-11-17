@@ -10,11 +10,12 @@ $infoCols = 2 + $cols + 1 + ($r['show_grades'] ? 1 : 0) + ($r['show_positions'] 
 ?>
 <section class="sheet">
   <div class="sheet-frame">
+    <?php if (!empty($s['logo_path'])): ?><div class="rc-watermark" aria-hidden="true"><img src="<?= e(url('media/logo/' . $s['id'])) ?>" alt=""></div><?php endif; ?>
     <header class="rc-head">
       <?php if (!empty($s['logo_path'])): ?>
         <img class="rc-logo" src="<?= e(url('media/logo/' . $s['id'])) ?>" alt="">
       <?php else: ?>
-        <img class="rc-logo" src="<?= e(asset('img/gradely-logo.png')) ?>" alt="">
+        <span class="rc-logo rc-logo-placeholder" aria-label="School logo not uploaded"><?= e(initials($s['name'])) ?></span>
       <?php endif; ?>
       <div class="rc-head-text">
         <h1 class="rc-school"><?= e($s['name']) ?></h1>
@@ -99,6 +100,12 @@ $infoCols = 2 + $cols + 1 + ($r['show_grades'] ? 1 : 0) + ($r['show_positions'] 
       <div><span class="rc-line"></span><p>Principal<?= !empty($r['cfg']['principal_name']) ? ': ' . e($r['cfg']['principal_name']) : '' ?></p></div>
     </div>
 
+    <?php if (!empty($r['verification']['barcode_svg'])): ?>
+      <div class="rc-verification">
+        <div><strong>Result authenticity</strong><small>Scan to verify this published report</small></div>
+        <div class="rc-barcode"><?= $r['verification']['barcode_svg'] ?><small><?= e($r['verification']['token']) ?></small></div>
+      </div>
+    <?php endif; ?>
     <footer class="rc-foot">
       <?= e($r['cfg']['report_footer'] ?: 'This report is computer-generated.') ?>
       <span class="rc-powered">GRADELY · Powered by Techpreneur</span>

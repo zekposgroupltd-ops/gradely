@@ -143,10 +143,17 @@ final class ResultsController extends BaseController
         }
         [$term, $class] = $this->target();
         $back = $this->back((int) $term['id'], (int) $class['id']);
-        $n = DB::exec(
-            "UPDATE result_summaries SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE school_id = ? AND term_id = ? AND class_id = ? AND status = 'approved'",
-            [$this->sid(), $term['id'], $class['id']]
-        );
+        $sid = $this->sid();
+        $n = DB::transaction(static function () use ($sid, $term, $class): int {
+            $changed = DB::exec(
+                "UPDATE result_summaries SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE school_id = ? AND term_id = ? AND class_id = ? AND status = 'approved'",
+                [$sid, $term['id'], $class['id']]
+            );
+            if ($changed > 0) {
+                DB::run("UPDATE result_verifications SET revoked_at = NOW() WHERE school_id = ? AND term_id = ? AND student_id IN (SELECT student_id FROM result_summaries WHERE school_id = ? AND term_id = ? AND class_id = ?)", [$sid, $term['id'], $sid, $term['id'], $class['id']]);
+            }
+            return $changed;
+        });
         if ($n === 0) {
             $this->fail('Only approved (unpublished) results can be reverted to draft.', $back);
         }
@@ -183,10 +190,17 @@ final class ResultsController extends BaseController
         }
         [$term, $class] = $this->target();
         $back = $this->back((int) $term['id'], (int) $class['id']);
-        $n = DB::exec(
-            "UPDATE result_summaries SET status = 'approved', published_at = NULL WHERE school_id = ? AND term_id = ? AND class_id = ? AND status = 'published'",
-            [$this->sid(), $term['id'], $class['id']]
-        );
+        $sid = $this->sid();
+        $n = DB::transaction(static function () use ($sid, $term, $class): int {
+            $changed = DB::exec(
+                "UPDATE result_summaries SET status = 'approved', published_at = NULL WHERE school_id = ? AND term_id = ? AND class_id = ? AND status = 'published'",
+                [$sid, $term['id'], $class['id']]
+            );
+            if ($changed > 0) {
+                DB::run("UPDATE result_verifications SET revoked_at = NOW() WHERE school_id = ? AND term_id = ? AND student_id IN (SELECT student_id FROM result_summaries WHERE school_id = ? AND term_id = ? AND class_id = ?)", [$sid, $term['id'], $sid, $term['id'], $class['id']]);
+            }
+            return $changed;
+        });
         if ($n === 0) {
             $this->fail('These results are not published.', $back);
         }
